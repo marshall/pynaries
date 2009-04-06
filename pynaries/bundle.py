@@ -104,6 +104,7 @@ class Resolver:
 		self.version = version
 		self.resolution = None
 		self.resolvedSite = None
+		self.error = False
 	
 	def matchesVersion(self, version):
 		version2 = int(self.version.replace(".", ""))
@@ -135,9 +136,16 @@ class Resolver:
 				self.resolvedSite = site
 				break
 		
+		#print >> sys.stderr, "pullsites=" + str(PullSites)
+		if not self.error:
+			print >> sys.stderr, "Error resolving: %s %s %s" % (self.id, self.op, str(self.version))
+			self.error = True
+		
 	def fetch(self, repository=DefaultRepository):
 		if self.resolution is None:
 			self.resolve()
+			if self.resolution is None:
+				return
 		
 		self.resolvedSite.fetch(self.resolution, repository)
 	

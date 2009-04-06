@@ -154,32 +154,28 @@ class SFTPSite:
 		bundle.Progress.start(resolution['bundle'].archiveName(), 'download', 0)
 		self.sftp.get(resolution['path'], tmpArchive, sftpCallback)
 		extractResolution(tmpDir, resolution, repository)
-		
 
-class S3Site:
-	def __init__(self, bucketName='pynaries', publicKey=None, privateKey=None):
-		self.publicKey = publicKey
-		self.privateKey = privateKey
+
+class HTTPSite:
+	def __init__(self, host, port=80, path='/'):
+		self.host = host
+		self.port = port
+		if not path.startswith('/'):
+			path = '/' + path
+			
+		self.path = path
+		self.baseURL = 'http://%s:%s%s' % (self.host, self.port, self.path)
 		self.jsonIndex = JSONIndex()
-		self.baseURL = 'http://s3.amazonaws.com/%s' % bucketName
-		self.service = s3.Service(self.publicKey, self.privateKey, progress_listener=bundle.Progress)
-		self.bucket = self.service.get(bucketName)
 		try:
-			pynariesJson = self.bucket.get("pynaries.json")
-			if pynariesJson is not None:
-				self.jsonIndex.loadstring(pynariesJson.data)
-		except s3.S3Error, e:
+			f = urllib2.urlopen(self.baseURL + '/pynaries.json')
+			self.jsonIndex.load(f)
+			f.close()
+		except:
 			pass
-		
+	
 	def publish(self, b):
-		f = open(b.localArchive(), 'rb')
-		obj = s3.S3Object('/'.join([b.id, b.version, b.archiveName()]), f, {}, bucket=self.bucket)
-		self.bucket.save(obj)
-		self.jsonIndex.add(b)
-		json = str(self.jsonIndex)
-		jsonIO = StringIO.StringIO(json)
-		jsonObj = s3.S3Object('pynaries.json', jsonIO, {}, bucket=self.bucket)
-		self.bucket.save(jsonObj)
+		#TODO: implement a generic way to use HTTP PUT here
+		pass
 	
 	def resolve(self, resolver):
 		for b in self.jsonIndex.json['bundles'].keys():
@@ -197,21 +193,46 @@ class S3Site:
 	def fetch(self, resolution, repository):
 		f = urllib2.urlopen(self.baseURL + '/%s/%s/%s' %
 			(resolution['id'], resolution['version'], resolution['bundle'].archiveName()))
-		
+
 		size = f.info().get('Content-Length')
 		tmpDir = tempfile.mkdtemp()
 		tmpArchive = os.path.join(tmpDir, resolution['bundle'].archiveName())
 		archiveFile = open(tmpArchive, 'wb+')
-		print "http fetch: " + f.geturl()
-		pb = createProgressBar('Downloading', float(size))
+		bundle.Progress.open(resolution['bundle'].archiveName(), 'download', float(size))
 		progress = 0
 		buf = f.read(4096)
 		while buf != '':
 			archiveFile.write(buf)
 			buf = f.read(4096)
 			progress += len(buf)
-			pb.update(progress)
-		finishProgressBar(pb)
+			bundle.Progress.set(progress)
+		bundle.Progress.finish()
 		f.close()
 		archiveFile.close()
 		extractResolution(tmpDir, resolution, repository)
+	
+		
+class S3Site(HTTPSite):
+	def __init__(self, bucketName='pynaries', publicKey=None, privateKey=None):
+		self.publicKey = publicKey
+		self.privateKey = privateKey
+		self.jsonIndex = JSONIndex()
+		self.baseURL = 'http://s3.amazonaws.com/%s' % bucketName
+		self.service = s3.Service(self.publicKey, self.privateKey, progress_listener=bundle.Progress)
+		self.bucket = self.service.get(bucketName)
+		try:
+			pynariesJson = self.bucket.get("pynaries.json")
+			if pynariesJson is not None:
+				self.jsonIndex.loadstring(pynariesJson.data)
+		except s3.S3Error, e:
+			pass
+		
+	def publish(self, b):
+		f = open(b.localArchive(), 'rb')
+		obj = s3.S3Object('/'.join([b.id, b.version, b.archiveName()]), f, {'x-amz-acl': 'public-read'}, bucket=self.bucket)
+		self.bucket.save(obj)
+		self.jsonIndex.add(b)
+		json = str(self.jsonIndex)
+		jsonIO = StringIO.StringIO(json)
+		jsonObj = s3.S3Object('pynaries.json', jsonIO, {'x-amz-acl':'public-read'}, bucket=self.bucket)
+		self.bucket.save(jsonObj)
