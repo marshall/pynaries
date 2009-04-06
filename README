@@ -1,0 +1,22 @@
+Pynaries
+---
+A simple binary dependency resolver and manager library.
+
+Declaring dependencies on a set of binaries is done through a python script, i.e:
+
+import pynaries
+from pynaries.site import *
+from pynaries.bundle import *
+
+AddPullSite(HTTPSite('myrepository.com', path='/pynaries'))
+dependencies = [
+	('com.mycompany.dep1', Equal, '1.0.1'),
+	('com.mycompany.dep2', GreaterThan, '1.0.0'),
+	('com.mycompany.dep3', LessThan, '2.0.0'),
+	('com.mycompany.dep4', InRange, '1.0.0-2.0.0')
+]
+
+pynaries.fetch(dependencies)
+
+
+
