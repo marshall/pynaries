@@ -5,6 +5,7 @@
 
 import os, sys, distutils.dir_util as dir_util
 import console, re
+from version import Version
 
 GreaterThanEqual = ">="
 GreaterThan = ">"
@@ -57,18 +58,18 @@ localRepository = LocalRepository()
 class Bundle:
 	def __init__(self, id, version, repository=localRepository):
 		self.id = id
-		self.version = version
+		self.version = Version.fromObject(version)
 		self.repository = repository
 	
 	@staticmethod
 	def getArchiveName(id, version):
-		return id + "_" + version + ".tar.bz2"
+		return id + "_" + str(version) + ".tar.bz2"
 		
 	def archiveName(self):
 		return Bundle.getArchiveName(self.id, self.version)
 		
 	def localPath(self):
-		return os.path.join(self.repository.path, self.id, self.version);
+		return os.path.join(self.repository.path, self.id, str(self.version));
 	
 	def localArchive(self):
 		return self.path(self.archiveName())
@@ -134,18 +135,11 @@ PullSites = [ ]
 
 def AddPullSite(site):
 	PullSites.append(site)
-
-def compareVersions(v1, v2):
-	if v1.__class__ is str:
-		v1 = int(v1.replace('.',''))
-	if v2.__class__ is str:
-		v2 = int(v2.replace('.',''))
-	return v1 - v2
 	
 class Resolution:
 	def __init__(self, id, version, site, local=False, **kwargs):
 		self.id = id
-		self.version = version
+		self.version = Version.fromObject(version)
 		self.site = site
 		self.bundle = Bundle(id, version)
 		self.args = {}
@@ -157,41 +151,39 @@ class Resolution:
 		return self.args[key]
 	
 	def __cmp__(self, other):
-		return compareVersions(self.version, other.version)
+		return cmp(self.version, other.version)
 		
 class Resolver:
 	def __init__(self, id, op=GreaterThan, version="0.0.0"):
 		self.id = id
 		self.op = op
-		self.version = version
+		self.version = Version.fromObject(version)
 		self.resolution = None
 		self.resolvedSite = None
 		self.error = False
 	
 	def matchesVersion(self, version):
+		v = Version.fromObject(version)
 		if not self.op is InRange:
-			c = compareVersions(version, self.version)
 			if self.op is GreaterThanEqual:
-				return c >= 0
+				return self.version >= v
 			elif self.op is GreaterThan:
-				return c > 0
+				return self.version > v
 			elif self.op is LessThanEqual:
-				return c <= 0
+				return self.version <= v
 			elif self.op is LessThan:
-				return c < 0
+				return self.version < v
 			elif self.op is Equal:
-				return c == 0
+				return self.version == v
 		else:
 			versionRange = []
-			if version.__class__ is list:
+			if isinstance(version, list):
 				versionRange = version
 			else:
 				r = re.compile("[,\\-\\:]")
 				versionRange = re.split(r, version)
 			
-			c1 = compareVersions(self.version, versionRange[0])
-			c2 = compareVersions(self.version, versionRange[1])
-			if c1 > 0 and c2 < 0:
+			if self.version > Version.fromObject(versionRange[0]) and self.version < Version.fromObject(versionRange[1]):
 				return True
 			return False
 	

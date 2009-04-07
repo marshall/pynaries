@@ -5,8 +5,9 @@
 import os, sys
 import simplejson, simplejson.scanner
 
-import bundle
+import bundle, version
 from bundle import Bundle, Resolver, AddPullSite, localRepository
+from version import Version
 from site import LocalSite, SFTPSite, HTTPSite, S3Site
 
 def fetch(dependencies, repository=localRepository):

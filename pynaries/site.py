@@ -15,7 +15,7 @@ def extractResolution(path, resolution, repository):
 	tar = tarfile.open(tarball, "r:bz2")
 	names = tar.getnames()
 	bundle.Progress.start(resolution.bundle.archiveName(), 'extract', len(names))
-	path = os.path.join(repository.path, resolution.id, resolution.version)
+	path = os.path.join(repository.path, resolution.id, str(resolution.version))
 	for name in names:
 		tar.extract(name, path)
 		bundle.Progress.update(1)
@@ -51,7 +51,7 @@ class JSONIndex:
 	def add(self, bundle):
 		if not self.json['bundles'].has_key(bundle.id):
 			self.json['bundles'][bundle.id] = {}
-		self.json['bundles'][bundle.id][bundle.version] = bundle.sha1
+		self.json['bundles'][bundle.id][str(bundle.version)] = bundle.sha1
 		
 class LocalSite:
 	def __init__(self, path):
@@ -62,7 +62,7 @@ class LocalSite:
 			self.jsonIndex.load(self.jsonPath)
 	
 	def publish(self, bundle):
-		dir = os.path.join(self.path, bundle.id, bundle.version)
+		dir = os.path.join(self.path, bundle.id, str(bundle.version))
 		print "Publishing %s into local repository.." % bundle.localArchive()
 		if not os.path.exists(dir):
 			os.makedirs(dir)
@@ -123,7 +123,7 @@ class SFTPSite:
 	
 	def publish(self, b):
 		self.initClient()
-		publishPath = "/".join([self.path, b.id, b.version, b.archiveName()])
+		publishPath = "/".join([self.path, b.id, str(b.version), b.archiveName()])
 		size = os.stat(publishPath)[6]
 		bundle.Progress.start(bundle.archiveName(), "upload", size)
 		self.sftp.put(b.localArchive(), publishPath, sftpCallback)
@@ -193,7 +193,7 @@ class HTTPSite:
 
 	def fetch(self, resolution, repository):
 		f = urllib2.urlopen(self.baseURL + '/%s/%s/%s' %
-			(resolution.id, resolution.version, resolution.bundle.archiveName()))
+			(resolution.id, str(resolution.version), resolution.bundle.archiveName()))
 
 		size = f.info().get('Content-Length')
 		tmpDir = tempfile.mkdtemp()
@@ -235,7 +235,7 @@ class S3Site(HTTPSite):
 			return
 		
 		f = open(b.localArchive(), 'rb')
-		obj = s3.S3Object('/'.join([b.id, b.version, b.archiveName()]), f, {}, bucket=self.bucket)
+		obj = s3.S3Object('/'.join([b.id, str(b.version), b.archiveName()]), f, {}, bucket=self.bucket)
 		self.bucket.save(obj, {'x-amz-acl': 'public-read'})
 		self.jsonIndex.add(b)
 		f.close()
