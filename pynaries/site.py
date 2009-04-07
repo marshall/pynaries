@@ -15,10 +15,10 @@ def extractResolution(path, resolution, repository):
 	tar = tarfile.open(tarball, "r:bz2")
 	names = tar.getnames()
 	bundle.Progress.start(resolution.bundle.archiveName(), 'extract', len(names))
-	path = os.path.join(repository, resolution.id, resolution.version)
+	path = os.path.join(repository.path, resolution.id, resolution.version)
 	for name in names:
 		tar.extract(name, path)
-		bundle.Progress.update(progress)
+		bundle.Progress.update(1)
 	tar.close()
 	bundle.Progress.finish()
 	
@@ -32,9 +32,9 @@ class JSONIndex:
 		f = open(path, 'r')
 		self.loadfile(f)
 	
-	def loadstring(self, str):
-		self.json = simplejson.loads(str)
-	
+	def loadstring(self, s):
+		self.json = simplejson.loads(s)
+
 	def loadfile(self, file):
 		self.json = simplejson.load(file)
 		file.close()
@@ -77,7 +77,7 @@ class LocalSite:
 		if os.path.exists(basepath):
 			for dir in os.listdir(basepath):
 				if os.path.isdir(os.path.join(basepath,dir)) and resolver.matchesVersion(dir):
-					resolutions.append(Resolution(resolver.id, dir, self, path=os.path.join(basepath, dir)))
+					resolutions.append(bundle.Resolution(resolver.id, dir, self, path=os.path.join(basepath, dir)))
 		
 		return resolutions
 	
@@ -134,7 +134,7 @@ class SFTPSite:
 		resolutions = []
 		for version in versions:
 			if resolver.matchesVersion(version):
-				resolutions.append(Resolution(resolver.id, version, self, path='/'.join(basepath,version)))
+				resolutions.append(bundle.Resolution(resolver.id, version, self, path='/'.join(basepath,version)))
 		return resolutions
 	
 	def fetch(self, resolution, repository):
@@ -157,7 +157,7 @@ class HTTPSite:
 		self.jsonIndex = JSONIndex()
 		try:
 			f = urllib2.urlopen(self.baseURL + '/pynaries.json')
-			self.jsonIndex.load(f)
+			self.jsonIndex.loadfile(f)
 			f.close()
 		except:
 			pass
@@ -172,7 +172,7 @@ class HTTPSite:
 			versions = self.jsonIndex.json['bundles'][b]
 			for version in versions.keys():
 				if resolver.id == b and resolver.matchesVersion(version):
-					resolutions.append(Resolution(resolver.id, verison, self))
+					resolutions.append(bundle.Resolution(resolver.id, version, self))
 		return resolutions
 
 	def fetch(self, resolution, repository):
@@ -183,7 +183,7 @@ class HTTPSite:
 		tmpDir = tempfile.mkdtemp()
 		tmpArchive = os.path.join(tmpDir, resolution.bundle.archiveName())
 		archiveFile = open(tmpArchive, 'wb+')
-		bundle.Progress.open(resolution.bundle.archiveName(), 'download', float(size))
+		bundle.Progress.start(resolution.bundle.archiveName(), 'download', float(size))
 		progress = 0
 		buf = f.read(4096)
 		while buf != '':

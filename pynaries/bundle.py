@@ -196,10 +196,8 @@ class Resolver:
 		self.resolution = None
 		
 		for site in PullSites:
-			print "checking site " + str(site)
 			resolutions = site.resolve(self)
 			for resolution in resolutions:
-				print "have resolution " + str(resolution)
 				if self.resolution is None:
 					self.resolution = resolution
 				elif resolution > self.resolution:
