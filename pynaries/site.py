@@ -77,7 +77,14 @@ class LocalSite:
 		if os.path.exists(basepath):
 			for dir in os.listdir(basepath):
 				if os.path.isdir(os.path.join(basepath,dir)) and resolver.matchesVersion(dir):
-					resolutions.append(bundle.Resolution(resolver.id, dir, self, path=os.path.join(basepath, dir)))
+					path = os.path.join(basepath, dir)
+					url = "file://" + path
+					url = url.replace('\\', '/')
+					url = urllib.quote_plus(url)
+					resolutions.append(bundle.Resolution(
+						resolver.id, dir, self,
+						path=path,
+						url=url))
 		
 		return resolutions
 	
@@ -134,7 +141,12 @@ class SFTPSite:
 		resolutions = []
 		for version in versions:
 			if resolver.matchesVersion(version):
-				resolutions.append(bundle.Resolution(resolver.id, version, self, path='/'.join(basepath,version)))
+				path = '/'.join(basepath,version)
+				url = 'sftp://%s@%s%s' % (self.user, self.host, path)
+				resolutions.append(bundle.Resolution(
+					resolver.id, version, self,
+					path=path,
+					url=url))
 		return resolutions
 	
 	def fetch(self, resolution, repository):
@@ -172,7 +184,11 @@ class HTTPSite:
 			versions = self.jsonIndex.json['bundles'][b]
 			for version in versions.keys():
 				if resolver.id == b and resolver.matchesVersion(version):
-					resolutions.append(bundle.Resolution(resolver.id, version, self))
+					url = self.baseURL + '/' + resolver.id + '/' + \
+						version + '/' + bundle.Bundle.getArchiveName(resolver.id, version)
+					resolutions.append(bundle.Resolution(
+						resolver.id, version, self,
+						url=url))
 		return resolutions
 
 	def fetch(self, resolution, repository):

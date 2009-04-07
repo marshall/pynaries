@@ -59,9 +59,13 @@ class Bundle:
 		self.id = id
 		self.version = version
 		self.repository = repository
+	
+	@staticmethod
+	def getArchiveName(id, version):
+		return id + "_" + version + ".tar.bz2"
 		
 	def archiveName(self):
-		return self.id + "_" + self.version + ".tar.bz2"
+		return Bundle.getArchiveName(self.id, self.version)
 		
 	def localPath(self):
 		return os.path.join(self.repository.path, self.id, self.version);
@@ -204,10 +208,13 @@ class Resolver:
 					self.resolution = resolution
 		
 		if self.resolution is not None:
+			print "Found %s [%s] on remote site" % (self.id, str(self.resolution.version))
+			print ":: " + self.resolution.arg('url')
+			print ":: Checking against local repository.."
 			# compare the "greatest" resolution with the one in our local repository
 			# if it's greater, prefer the updated version
 			for localResolution in localRepository.resolve(self):
-				if localResolution > self.resolution:
+				if localResolution >= self.resolution:
 					self.resolution = localResolution
 		
 		if self.resolution is None:
@@ -224,5 +231,5 @@ class Resolver:
 		if not self.resolution.local:
 			self.resolution.site.fetch(self.resolution, repository)
 		else:
-			print "Resolved %s locally (%s)" % (self.id, self.resolution.version)
+			print ":: Using local resolution: " + self.resolution.arg('path')
 	
