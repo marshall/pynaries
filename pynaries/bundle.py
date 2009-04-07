@@ -4,7 +4,7 @@
 # Copyright (c) 2009 Appcelerator, Inc. All Rights Reserved.
 
 import os, sys, distutils.dir_util as dir_util
-import console
+import console, re
 
 GreaterThanEqual = ">="
 GreaterThan = ">"
@@ -12,15 +12,50 @@ LessThan = "<"
 LessThanEqual = "<="
 Equal = "="
 InRange = ".."
-DefaultRepository = os.path.join(os.path.expanduser("~"), ".pynaries")
 Progress = console.ConsoleProgress()
 
 import shutil, platform, tarfile, time, hashlib
 import httplib, site
 
+class LocalRepository:
+	def __init__(self):
+		self.path = os.path.join(os.path.expanduser("~"), '.pynaries')
+		if not os.path.exists(self.path):
+			os.mkdir(self.path)
+	
+		self._loadBundles()
+	
+	def _loadBundles(self):
+		self.bundles = {}
+		for dir in os.listdir(self.path):
+			if os.path.isdir(dir):
+				self._loadVersions(dir, os.path.join(self.path, dir))
+	
+	def _loadVersions(self, id, dir):
+		self.bundles[id] = {}
+		for vdir in os.listdir(dir):
+			if os.path.isdir(vdir):
+				self.bundles[id][vdir] = Bundle(id, vdir, self)
+
+	def bundles(self):
+		for id in self.bundles.keys():
+			for version in self.bundles[id].keys():
+				yield self.bundles[id][version]
+	
+	def resolve(self, resolver):
+		basepath = os.path.join(self.path, resolver.id)
+		resolutions = []
+		if os.path.exists(basepath):
+			for dir in os.listdir(basepath):
+				if os.path.isdir(os.path.join(basepath,dir)) and resolver.matchesVersion(dir):
+					resolutions.append(Resolution(resolver.id, dir, None, path=os.path.join(basepath, dir), local=True))
+		
+		return resolutions
+
+localRepository = LocalRepository()
 
 class Bundle:
-	def __init__(self, id, version, repository=DefaultRepository):
+	def __init__(self, id, version, repository=localRepository):
 		self.id = id
 		self.version = version
 		self.repository = repository
@@ -29,7 +64,7 @@ class Bundle:
 		return self.id + "_" + self.version + ".tar.bz2"
 		
 	def localPath(self):
-		return os.path.join(self.repository, self.id, self.version);
+		return os.path.join(self.repository.path, self.id, self.version);
 	
 	def localArchive(self):
 		return self.path(self.archiveName())
@@ -38,13 +73,9 @@ class Bundle:
 		if not os.path.exists(self.localArchive()):
 			raise Exception(self.localArchive() + " doesn't exist")
 		
-		m = hashlib.sha1()
-		f = open(self.localArchive() ,'rb')
 		bufsize = 1024
-		
 		f = open(self.localArchive(), "rb")
 		m = hashlib.sha1()
-		buf = None
 		buf = f.read(1024)
 		t = f.tell()
 		stat = os.stat(self.localArchive())
@@ -66,6 +97,9 @@ class Bundle:
 		size = 0
 		for root, dirs, files in os.walk(dir):
 			size += len(files)
+		if size is 0:
+			raise Exception("No files to bundle in " + dir)
+		
 		#print "Bundling %s (%d files)" % (self.archiveName(), size)
 		Progress.start(self.archiveName(), "compress", size)
 		cwd = os.getcwd()
@@ -97,6 +131,30 @@ PullSites = [ ]
 def AddPullSite(site):
 	PullSites.append(site)
 
+def compareVersions(v1, v2):
+	if v1.__class__ is str:
+		v1 = int(v1.replace('.',''))
+	if v2.__class__ is str:
+		v2 = int(v2.replace('.',''))
+	return v1 - v2
+	
+class Resolution:
+	def __init__(self, id, version, site, local=False, **kwargs):
+		self.id = id
+		self.version = version
+		self.site = site
+		self.bundle = Bundle(id, version)
+		self.args = {}
+		self.local = local
+		for key in kwargs.keys():
+			self.args[key] = kwargs[key]
+	
+	def arg(self, key):
+		return self.args[key]
+	
+	def __cmp__(self, other):
+		return compareVersions(self.version, other.version)
+		
 class Resolver:
 	def __init__(self, id, op=GreaterThan, version="0.0.0"):
 		self.id = id
@@ -107,45 +165,66 @@ class Resolver:
 		self.error = False
 	
 	def matchesVersion(self, version):
-		version2 = int(self.version.replace(".", ""))
 		if not self.op is InRange:
-			version1 = int(version.replace(".", ""))
+			c = compareVersions(version, self.version)
 			if self.op is GreaterThanEqual:
-				return version1 >= version2
+				return c >= 0
 			elif self.op is GreaterThan:
-				return version1 > version2
+				return c > 0
 			elif self.op is LessThanEqual:
-				return version1 <= version2
+				return c <= 0
 			elif self.op is LessThan:
-				return version1 < version2
+				return c < 0
 			elif self.op is Equal:
-				return version1 is version1
+				return c == 0
 		else:
-			versionRange = version.split(",")
-			versionRange1 = int(versionRange[0].replace(".", ""))
-			versionRange2 = int(versionRange[1].replace(".", ""))
-			if version > versionRange1 and version < versionRange2:
+			versionRange = []
+			if version.__class__ is list:
+				versionRange = version
+			else:
+				r = re.compile("[,\\-\\:]")
+				versionRange = re.split(r, version)
+			
+			c1 = compareVersions(self.version, versionRange[0])
+			c2 = compareVersions(self.version, versionRange[1])
+			if c1 > 0 and c2 < 0:
 				return True
 			return False
 	
+	# find the "newest" resolution for the id/version/operator spec
 	def resolve(self):
 		self.resolution = None
+		
 		for site in PullSites:
-			self.resolution = site.resolve(self)
-			if self.resolution is not None:
-				self.resolvedSite = site
-				break
+			print "checking site " + str(site)
+			resolutions = site.resolve(self)
+			for resolution in resolutions:
+				print "have resolution " + str(resolution)
+				if self.resolution is None:
+					self.resolution = resolution
+				elif resolution > self.resolution:
+					self.resolution = resolution
 		
-		#print >> sys.stderr, "pullsites=" + str(PullSites)
-		if not self.error:
-			print >> sys.stderr, "Error resolving: %s %s %s" % (self.id, self.op, str(self.version))
-			self.error = True
+		if self.resolution is not None:
+			# compare the "greatest" resolution with the one in our local repository
+			# if it's greater, prefer the updated version
+			for localResolution in localRepository.resolve(self):
+				if localResolution > self.resolution:
+					self.resolution = localResolution
 		
-	def fetch(self, repository=DefaultRepository):
+		if self.resolution is None:
+			if not self.error:
+				print >> sys.stderr, "Error resolving: %s %s %s" % (self.id, self.op, str(self.version))
+				self.error = True
+		
+	def fetch(self, repository=localRepository):
 		if self.resolution is None:
 			self.resolve()
 			if self.resolution is None:
 				return
 		
-		self.resolvedSite.fetch(self.resolution, repository)
+		if not self.resolution.local:
+			self.resolution.site.fetch(self.resolution, repository)
+		else:
+			print "Resolved %s locally (%s)" % (self.id, self.resolution.version)
 	

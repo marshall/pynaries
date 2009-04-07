@@ -6,15 +6,14 @@ import os, sys
 import simplejson, simplejson.scanner
 
 import bundle
-from bundle import Bundle, Resolver, AddPullSite, DefaultRepository
+from bundle import Bundle, Resolver, AddPullSite, localRepository
 from site import LocalSite, SFTPSite, HTTPSite, S3Site
 
-
-def fetch(dependencies, repository=DefaultRepository):
+def fetch(dependencies, repository=localRepository):
 	for id, op, version in dependencies:
 		fetchDependency(id, op, version, repository)
 	
-def fetchDependency(id, op=bundle.GreaterThan, version="0.0.0", repository=DefaultRepository):
+def fetchDependency(id, op=bundle.GreaterThan, version="0.0.0", repository=localRepository):
 	resolver = Resolver(id, op, version)
 	resolver.resolve()
 	resolver.fetch(repository)

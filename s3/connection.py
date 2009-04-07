@@ -115,7 +115,8 @@ class S3Connection(object):
                 do_c()
                 
             if send_io is not None:
-              if self._progress_listener is not None: self._progress_listener.start(obj, 'upload', length)
+              if self._progress_listener is not None:
+                  self._progress_listener.start(obj, 'upload', length)
               step = 65536
               data = send_io.read(step)
               while len(data) > 0:

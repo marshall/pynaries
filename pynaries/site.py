@@ -11,11 +11,11 @@ import simplejson, httplib, hashlib, urllib2, tarfile
 import s3, StringIO
 
 def extractResolution(path, resolution, repository):
-	tarball = os.path.join(path, resolution['bundle'].archiveName())
+	tarball = os.path.join(path, resolution.bundle.archiveName())
 	tar = tarfile.open(tarball, "r:bz2")
 	names = tar.getnames()
-	bundle.Progress.start(resolution['bundle'].archiveName(), 'extract', len(names))
-	path = os.path.join(repository, resolution['id'], resolution['version'])
+	bundle.Progress.start(resolution.bundle.archiveName(), 'extract', len(names))
+	path = os.path.join(repository, resolution.id, resolution.version)
 	for name in names:
 		tar.extract(name, path)
 		bundle.Progress.update(progress)
@@ -51,8 +51,7 @@ class JSONIndex:
 	def add(self, bundle):
 		if not self.json['bundles'].has_key(bundle.id):
 			self.json['bundles'][bundle.id] = {}
-		if not self.json['bundles'][bundle.id].has_key(bundle.version):
-			self.json['bundles'][bundle.id][bundle.version] = bundle.sha1
+		self.json['bundles'][bundle.id][bundle.version] = bundle.sha1
 		
 class LocalSite:
 	def __init__(self, path):
@@ -74,20 +73,16 @@ class LocalSite:
 		
 	def resolve(self, resolver):
 		basepath = os.path.join(self.path, resolver.id)
+		resolutions = []
 		if os.path.exists(basepath):
 			for dir in os.listdir(basepath):
 				if os.path.isdir(os.path.join(basepath,dir)) and resolver.matchesVersion(dir):
-					resolution = {
-						'id':resolver.id,
-						'version':dir,
-						'path':os.path.join(basepath,dir),
-						'bundle':Bundle(resolver.id, dir)
-					}
-					return resolution
-		return None
+					resolutions.append(Resolution(resolver.id, dir, self, path=os.path.join(basepath, dir)))
+		
+		return resolutions
 	
 	def fetch(self, resolution, repository):
-		extractResolution(resolution['path'], resolution, repository)
+		extractResolution(resolution.arg('path'), resolution, repository)
 
 def sftpCallback(progress,size):
 	if bundle.Progress.maxVal is 0:
@@ -136,25 +131,19 @@ class SFTPSite:
 			return None
 		
 		versions = self.sftp.listdir()
+		resolutions = []
 		for version in versions:
 			if resolver.matchesVersion(version):
-				resolution = {
-					'id':resolver.id,
-					'version':version,
-					'path':"/".join(basepath,version),
-					'bundle':Bundle(resolver.id, version)
-				}
-				return resolution
-		return None
+				resolutions.append(Resolution(resolver.id, version, self, path='/'.join(basepath,version)))
+		return resolutions
 	
 	def fetch(self, resolution, repository):
 		self.initClient()
 		tmpDir = tempfile.mkdtemp()
-		tmpArchive = os.path.join(tmpDir, resolution['bundle'].archiveName())
-		bundle.Progress.start(resolution['bundle'].archiveName(), 'download', 0)
-		self.sftp.get(resolution['path'], tmpArchive, sftpCallback)
+		tmpArchive = os.path.join(tmpDir, resolution.bundle.archiveName())
+		bundle.Progress.start(resolution.bundle.archiveName(), 'download', 0)
+		self.sftp.get(resolution.arg('path'), tmpArchive, sftpCallback)
 		extractResolution(tmpDir, resolution, repository)
-
 
 class HTTPSite:
 	def __init__(self, host, port=80, path='/'):
@@ -178,27 +167,23 @@ class HTTPSite:
 		pass
 	
 	def resolve(self, resolver):
+		resolutions = []
 		for b in self.jsonIndex.json['bundles'].keys():
 			versions = self.jsonIndex.json['bundles'][b]
 			for version in versions.keys():
 				if resolver.id == b and resolver.matchesVersion(version):
-					resolution = {
-						'id':resolver.id,
-						'version':version,
-						'bundle':bundle.Bundle(resolver.id, version)
-					}
-					return resolution
-		return None
+					resolutions.append(Resolution(resolver.id, verison, self))
+		return resolutions
 
 	def fetch(self, resolution, repository):
 		f = urllib2.urlopen(self.baseURL + '/%s/%s/%s' %
-			(resolution['id'], resolution['version'], resolution['bundle'].archiveName()))
+			(resolution.id, resolution.version, resolution.bundle.archiveName()))
 
 		size = f.info().get('Content-Length')
 		tmpDir = tempfile.mkdtemp()
-		tmpArchive = os.path.join(tmpDir, resolution['bundle'].archiveName())
+		tmpArchive = os.path.join(tmpDir, resolution.bundle.archiveName())
 		archiveFile = open(tmpArchive, 'wb+')
-		bundle.Progress.open(resolution['bundle'].archiveName(), 'download', float(size))
+		bundle.Progress.open(resolution.bundle.archiveName(), 'download', float(size))
 		progress = 0
 		buf = f.read(4096)
 		while buf != '':
@@ -219,6 +204,7 @@ class S3Site(HTTPSite):
 		self.jsonIndex = JSONIndex()
 		self.baseURL = 'http://s3.amazonaws.com/%s' % bucketName
 		self.service = s3.Service(self.publicKey, self.privateKey, progress_listener=bundle.Progress)
+		self.bucketName = bucketName
 		self.bucket = self.service.get(bucketName)
 		try:
 			pynariesJson = self.bucket.get("pynaries.json")
@@ -228,11 +214,15 @@ class S3Site(HTTPSite):
 			pass
 		
 	def publish(self, b):
+		if b.__class__ is list:
+			for b1 in b: self.publish(b1)
+			return
+		
 		f = open(b.localArchive(), 'rb')
-		obj = s3.S3Object('/'.join([b.id, b.version, b.archiveName()]), f, {'x-amz-acl': 'public-read'}, bucket=self.bucket)
-		self.bucket.save(obj)
+		obj = s3.S3Object('/'.join([b.id, b.version, b.archiveName()]), f, {}, bucket=self.bucket)
+		self.bucket.save(obj, {'x-amz-acl': 'public-read'})
 		self.jsonIndex.add(b)
+		f.close()
 		json = str(self.jsonIndex)
-		jsonIO = StringIO.StringIO(json)
-		jsonObj = s3.S3Object('pynaries.json', jsonIO, {'x-amz-acl':'public-read'}, bucket=self.bucket)
-		self.bucket.save(jsonObj)
+		jsonObj = s3.S3Object('pynaries.json', json, {}, bucket=self.bucket)
+		self.bucket.save(jsonObj, {'x-amz-acl': 'public-read'})
