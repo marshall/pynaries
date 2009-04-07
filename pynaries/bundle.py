@@ -163,18 +163,18 @@ class Resolver:
 		self.error = False
 	
 	def matchesVersion(self, version):
-		v = Version.fromObject(version)
 		if not self.op is InRange:
+			v = Version.fromObject(version)
 			if self.op is GreaterThanEqual:
-				return self.version >= v
+				return v >= self.version
 			elif self.op is GreaterThan:
-				return self.version > v
+				return v > self.version
 			elif self.op is LessThanEqual:
-				return self.version <= v
+				return v <= self.version
 			elif self.op is LessThan:
-				return self.version < v
+				return v < self.version
 			elif self.op is Equal:
-				return self.version == v
+				return v == self.version
 		else:
 			versionRange = []
 			if isinstance(version, list):

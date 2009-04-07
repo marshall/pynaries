@@ -30,6 +30,7 @@ class Version:
 	
 	@staticmethod
 	def getNumericPiece(str):
+		if str is None: return '0'
 		n = ""
 		for c in str:
 			if c.isdigit():
@@ -40,6 +41,8 @@ class Version:
 	
 	@staticmethod
 	def getAnnotationPiece(s):
+		if s is None: return None
+		
 		n = Version.getNumericPiece(s)
 		if n is s:
 			return None

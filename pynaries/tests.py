@@ -13,6 +13,8 @@ class VersionTestCase(unittest.TestCase):
 	
 	def testComparisons(self):
 		self.assertTrue(Version.fromObject('1.3.3') < Version.fromObject('1.3.3sp1'))
+		self.assertTrue(Version.fromObject('1.4.0') > Version.fromObject('1.3.3sp1'))
+		self.assertTrue(Version.fromObject('1.3.3p1') < Version.fromObject('1.4.0'))
 
 
 if __name__ == '__main__':

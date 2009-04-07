@@ -15,6 +15,7 @@ def fetch(dependencies, repository=localRepository):
 		fetchDependency(id, op, version, repository)
 	
 def fetchDependency(id, op=bundle.GreaterThan, version="0.0.0", repository=localRepository):
+	print "Finding %s %s %s" % (id,op,version)
 	resolver = Resolver(id, op, version)
 	resolver.resolve()
 	resolver.fetch(repository)
