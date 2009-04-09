@@ -10,17 +10,18 @@ import bundle, console
 import simplejson, httplib, hashlib, urllib2, tarfile
 import s3, StringIO
 
-def extractResolution(path, resolution, repository):
+def copyResolution(path, resolution, repository):
 	tarball = os.path.join(path, resolution.bundle.archiveName())
-	tar = tarfile.open(tarball, "r:bz2")
-	names = tar.getnames()
-	bundle.Progress.start(resolution.bundle.archiveName(), 'extract', len(names))
-	path = os.path.join(repository.path, resolution.id, str(resolution.version))
-	for name in names:
-		tar.extract(name, path)
-		bundle.Progress.update(1)
-	tar.close()
-	bundle.Progress.finish()
+	#tar = tarfile.open(tarball, "r:bz2")
+	#names = tar.getnames()
+	#bundle.Progress.start(resolution.bundle.archiveName(), 'extract', len(names))
+	path = os.path.join(repository.path, resolution.id, str(resolution.version), resolution.bundle.archiveName())
+	shutil.copy(tarball, path)
+	#for name in names:
+	#	tar.extract(name, path)
+	#	bundle.Progress.update(1)
+	#tar.close()
+	#bundle.Progress.finish()
 	
 class JSONIndex:
 	def __init__(self):
@@ -63,7 +64,7 @@ class LocalSite:
 	
 	def publish(self, bundle):
 		dir = os.path.join(self.path, bundle.id, str(bundle.version))
-		print "Publishing %s into local repository.." % bundle.localArchive()
+		logging.info("Publishing %s into local repository.." % bundle.localArchive())
 		if not os.path.exists(dir):
 			os.makedirs(dir)
 		
@@ -89,7 +90,7 @@ class LocalSite:
 		return resolutions
 	
 	def fetch(self, resolution, repository):
-		extractResolution(resolution.arg('path'), resolution, repository)
+		copyResolution(resolution.arg('path'), resolution, repository)
 
 def sftpCallback(progress,size):
 	if bundle.Progress.maxVal is 0:
@@ -155,7 +156,7 @@ class SFTPSite:
 		tmpArchive = os.path.join(tmpDir, resolution.bundle.archiveName())
 		bundle.Progress.start(resolution.bundle.archiveName(), 'download', 0)
 		self.sftp.get(resolution.arg('path'), tmpArchive, sftpCallback)
-		extractResolution(tmpDir, resolution, repository)
+		copyResolution(tmpDir, resolution, repository)
 
 class HTTPSite:
 	def __init__(self, host, port=80, path='/'):
@@ -210,7 +211,7 @@ class HTTPSite:
 		bundle.Progress.finish()
 		f.close()
 		archiveFile.close()
-		extractResolution(tmpDir, resolution, repository)
+		copyResolution(tmpDir, resolution, repository)
 	
 		
 class S3Site(HTTPSite):
@@ -230,7 +231,7 @@ class S3Site(HTTPSite):
 			pass
 		
 	def publish(self, b):
-		if b.__class__ is list:
+		if isinstance(b, list):
 			for b1 in b: self.publish(b1)
 			return
 		

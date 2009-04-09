@@ -4,7 +4,7 @@
 # Copyright (c) 2009 Appcelerator, Inc. All Rights Reserved.
 
 import os, sys, distutils.dir_util as dir_util
-import console, re
+import console, re, logging
 from version import Version
 
 GreaterThanEqual = ">="
@@ -121,6 +121,17 @@ class Bundle:
 		bundleFile.close()
 		self.sha1 = self.archiveSHA1()
 		return bundleArchive
+	
+	def extract(self, dest):
+		tarball = os.path.join(self.localArchive())
+		tar = tarfile.open(tarball, "r:bz2")
+		names = tar.getnames()
+		Progress.start(self.archiveName(), 'extract', len(names))
+		for name in names:
+			tar.extract(name, dest)
+			Progress.update(1)
+		tar.close()
+		Progress.finish()
 		
 	def publish(self, site):
 		if not os.path.exists(self.localArchive()):
@@ -200,9 +211,9 @@ class Resolver:
 					self.resolution = resolution
 		
 		if self.resolution is not None:
-			print "Found %s [%s] on remote site" % (self.id, str(self.resolution.version))
-			print ":: " + self.resolution.arg('url')
-			print ":: Checking against local repository.."
+			logging.info(": Found %s [%s] on remote site" % (self.id, str(self.resolution.version)))
+			logging.info(":: => " + self.resolution.arg('url'))
+			logging.info(": Checking against local repository..")
 			# compare the "greatest" resolution with the one in our local repository
 			# if it's greater, prefer the updated version
 			for localResolution in localRepository.resolve(self):
@@ -211,7 +222,7 @@ class Resolver:
 		
 		if self.resolution is None:
 			if not self.error:
-				print >> sys.stderr, "Error resolving: %s %s %s" % (self.id, self.op, str(self.version))
+				logging.error(": Error resolving: %s %s %s" % (self.id, self.op, str(self.version)))
 				self.error = True
 		
 	def fetch(self, repository=localRepository):
@@ -223,5 +234,7 @@ class Resolver:
 		if not self.resolution.local:
 			self.resolution.site.fetch(self.resolution, repository)
 		else:
-			print ":: Using local resolution: " + self.resolution.arg('path')
+			logging.info(":: => Using local resolution: " + self.resolution.arg('path'))
+		
+		return self.resolution.bundle
 	
