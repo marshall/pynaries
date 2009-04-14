@@ -158,6 +158,13 @@ class Resolution:
 		for key in kwargs.keys():
 			self.args[key] = kwargs[key]
 	
+	def sha1(self):
+		if self.local:
+			return self.bundle.archiveSHA1()
+		else:
+			idx = self.site.getIndex()
+			return idx.json['bundles'][self.id][str(self.version)]
+	
 	def arg(self, key):
 		return self.args[key]
 	
@@ -199,7 +206,7 @@ class Resolver:
 			return False
 	
 	# find the "newest" resolution for the id/version/operator spec
-	def resolve(self):
+	def resolve(self, remoteOnly=False):
 		self.resolution = None
 		
 		for site in PullSites:
@@ -213,12 +220,13 @@ class Resolver:
 		if self.resolution is not None:
 			logging.info(": Found %s [%s] on remote site" % (self.id, str(self.resolution.version)))
 			logging.info(":: => " + self.resolution.arg('url'))
-			logging.info(": Checking against local repository..")
-			# compare the "greatest" resolution with the one in our local repository
-			# if it's greater, prefer the updated version
-			for localResolution in localRepository.resolve(self):
-				if localResolution >= self.resolution:
-					self.resolution = localResolution
+			if not remoteOnly:
+				logging.info(": Checking against local repository..")
+				# compare the "greatest" resolution with the one in our local repository
+				# if it's greater, prefer the updated version
+				for localResolution in localRepository.resolve(self):
+					if localResolution >= self.resolution:
+						self.resolution = localResolution
 		
 		if self.resolution is None:
 			if not self.error:

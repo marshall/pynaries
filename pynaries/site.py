@@ -22,7 +22,6 @@ def copyResolution(path, resolution, repository):
 	#	bundle.Progress.update(1)
 	#tar.close()
 	#bundle.Progress.finish()
-	
 class JSONIndex:
 	def __init__(self):
 		self.json = {
@@ -61,6 +60,9 @@ class LocalSite:
 		self.jsonPath = os.path.join(self.path, "pynaries.json")
 		if os.path.exists(self.jsonPath):
 			self.jsonIndex.load(self.jsonPath)
+	
+	def getIndex(self):
+		return self.jsonIndex
 	
 	def publish(self, bundle):
 		dir = os.path.join(self.path, bundle.id, str(bundle.version))
@@ -174,6 +176,9 @@ class HTTPSite:
 			f.close()
 		except:
 			pass
+	
+	def getIndex(self):
+		return self.jsonIndex
 	
 	def publish(self, b):
 		#TODO: implement a generic way to use HTTP PUT here
