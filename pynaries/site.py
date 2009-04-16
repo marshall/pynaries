@@ -247,4 +247,8 @@ class S3Site(HTTPSite):
 		f.close()
 		json = str(self.jsonIndex)
 		jsonObj = s3.S3Object('pynaries.json', json, {}, bucket=self.bucket)
-		self.bucket.save(jsonObj, {'x-amz-acl': 'public-read'})
+		try:
+			self.bucket.save(jsonObj, {'x-amz-acl': 'public-read'})
+		except S3Error, e:
+			if not 'RequestTimeout' in str(e):
+				raise e
