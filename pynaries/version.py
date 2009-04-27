@@ -50,8 +50,8 @@ class Version:
 	
 	@staticmethod
 	def fromObject(o):
-		if isinstance(o, str):
-			return Version.fromString(o)
+		if isinstance(o, str) or isinstance(o, unicode):
+			return Version.fromString(str(o))
 		elif isinstance(o, list):
 			return Version.fromList(o)
 		elif isinstance(o, Version):
