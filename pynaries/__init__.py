@@ -25,10 +25,10 @@ def fetchDependency(id, op=bundle.GreaterThan, version="0.0.0", repository=local
 	resolver.resolve()
 	return resolver.fetch(repository)
 
-def resolve(id, op=bundle.GreaterThan, version="0.0.0", remoteOnly=False):
+def resolve(id, op=bundle.GreaterThan, version="0.0.0", remote=True, local=True):
 	logging.info('Resolving %s %s %s' % (id,op,version))
 	resolver = Resolver(id,op,version)
-	resolver.resolve(remoteOnly)
+	resolver.resolve(remote,local)
 	return resolver.resolution
 
 def publish(dir, id, version, site):

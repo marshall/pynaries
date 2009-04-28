@@ -206,27 +206,29 @@ class Resolver:
 			return False
 	
 	# find the "newest" resolution for the id/version/operator spec
-	def resolve(self, remoteOnly=False):
+	def resolve(self, remote=True, local=True):
 		self.resolution = None
 		
-		for site in PullSites:
-			resolutions = site.resolve(self)
-			for resolution in resolutions:
-				if self.resolution is None:
-					self.resolution = resolution
-				elif resolution > self.resolution:
-					self.resolution = resolution
+		if remote:
+			for site in PullSites:
+				resolutions = site.resolve(self)
+				for resolution in resolutions:
+					if self.resolution is None:
+						self.resolution = resolution
+					elif resolution > self.resolution:
+						self.resolution = resolution
 		
 		if self.resolution is not None:
 			logging.info(": Found %s [%s] on remote site" % (self.id, str(self.resolution.version)))
 			logging.info(":: => " + self.resolution.arg('url'))
-			if not remoteOnly:
-				logging.info(": Checking against local repository..")
-				# compare the "greatest" resolution with the one in our local repository
-				# if it's greater, prefer the updated version
-				for localResolution in localRepository.resolve(self):
-					if localResolution >= self.resolution:
-						self.resolution = localResolution
+		
+		if local:
+			logging.info(": Checking against local repository..")
+			# compare the "greatest" resolution with the one in our local repository
+			# if it's greater, prefer the updated version
+			for localResolution in localRepository.resolve(self):
+				if self.resolution is None or localResolution >= self.resolution:
+					self.resolution = localResolution
 		
 		if self.resolution is None:
 			if not self.error:

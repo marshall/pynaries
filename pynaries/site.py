@@ -15,8 +15,11 @@ def copyResolution(path, resolution, repository):
 	#tar = tarfile.open(tarball, "r:bz2")
 	#names = tar.getnames()
 	#bundle.Progress.start(resolution.bundle.archiveName(), 'extract', len(names))
-	path = os.path.join(repository.path, resolution.id, str(resolution.version), resolution.bundle.archiveName())
-	shutil.copy(tarball, path)
+	path = os.path.join(repository.path, resolution.id, str(resolution.version))
+	try: os.makedirs(path)
+	except: pass
+	archivePath = os.path.join(path, resolution.bundle.archiveName())
+	shutil.copy(tarball, archivePath)
 	#for name in names:
 	#	tar.extract(name, path)
 	#	bundle.Progress.update(1)
