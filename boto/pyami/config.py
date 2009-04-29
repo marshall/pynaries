@@ -1,0 +1,173 @@
+# Copyright (c) 2006,2007 Mitch Garnaat http://garnaat.org/
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish, dis-
+# tribute, sublicense, and/or sell copies of the Software, and to permit
+# persons to whom the Software is furnished to do so, subject to the fol-
+# lowing conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+# OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABIL-
+# ITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+# SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+# IN THE SOFTWARE.
+#
+import StringIO, os
+import ConfigParser
+import boto
+
+#BotoConfigLocations = ['/etc/boto.cfg', os.path.expanduser('~/.boto')]
+#BotoConfigPath = BotoConfigLocations[0]
+#UserConfigPath = BotoConfigLocations[1]
+
+BotoConfigLocations = ['']
+BotoConfigPath = ''
+UserConfigPath = ''
+
+class Config(ConfigParser.SafeConfigParser):
+
+	def __init__(self, path=None, fp=None, do_load=True):
+		a = None
+	def get(self, section, name, default=None):
+		return default
+	def get_value(self, section, name, default=None):
+		return default
+	def getint(self, section, name, default=0):
+		return default
+		
+	# def save_option(self, path, section, option, value):
+	# 	a = None
+	# 
+	#     def save_user_option(self, section, option, value):
+	#         # self.save_option(UserConfigPath, section, option, value)
+	# 	a = None
+	# 
+	#     def save_system_option(self, section, option, value):
+	#         # self.save_option(BotoConfigPath, section, option, value)
+	# 	a = None
+	# 
+	#     def get_instance(self, name, default=None):
+	#         # try:
+	#         #     val = self.get('Instance', name)
+	#         # except:
+	#         #     val = default
+	#         # return val
+	# 	return default;
+	# 
+	#     def get_user(self, name, default=None):
+	#         # try:
+	#         #     val = self.get('User', name)
+	#         # except:
+	#         #     val = default
+	#         # return val
+	# 	return default;
+	# 
+	#     def getint_user(self, name, default=0):
+	#         # try:
+	#         #     val = self.getint('User', name)
+	#         # except:
+	#         #     val = default
+	#         # return val
+	# 	return default;
+	# 
+	#     def get_value(self, section, name, default=None):
+	#         # return self.get(section, name, default)
+	# 	return default;
+	# 
+	#     def get(self, section, name, default=None):
+	#         # try:
+	#         #     val = ConfigParser.SafeConfigParser.get(self, section, name)
+	#         # except:
+	#         #     val = default
+	#         # return val
+	# 	return default;
+	#     
+	#     def getint(self, section, name, default=0):
+	#         # try:
+	#         #     val = ConfigParser.SafeConfigParser.getint(self, section, name)
+	#         # except:
+	#         #     val = int(default)
+	#         # return val
+	# 	return default;
+	#     
+	#     def getfloat(self, section, name, default=0.0):
+	#         # try:
+	#         #     val = ConfigParser.SafeConfigParser.getfloat(self, section, name)
+	#         # except:
+	#         #     val = float(default)
+	#         # return val
+	# 	return default;
+	# 
+	#     def getbool(self, section, name, default=False):
+	#         # if self.has_option(section, name):
+	#         #     val = self.get(section, name)
+	#         #     if val.lower() == 'true':
+	#         #         val = True
+	#         #     else:
+	#         #         val = False
+	#         # else:
+	#         #     val = default
+	#         # return val
+	# 	return default;
+	#     
+	#     def setbool(self, section, name, value):
+	#         # if value:
+	#         #     self.set(section, name, 'true')
+	#         # else:
+	#         #     self.set(section, name, 'false')
+	#     
+	#     def dump(self):
+	#         # s = StringIO.StringIO()
+	#         # self.write(s)
+	#         # print s.getvalue()
+	# 
+	#     def dump_safe(self, fp=None):
+	#         # if not fp:
+	#         #     fp = StringIO.StringIO()
+	#         # for section in self.sections():
+	#         #     fp.write('[%s]\n' % section)
+	#         #     for option in self.options(section):
+	#         #         if option == 'aws_secret_access_key':
+	#         #             fp.write('%s = xxxxxxxxxxxxxxxxxx\n' % option)
+	#         #         else:
+	#         #             fp.write('%s = %s\n' % (option, self.get(section, option)))
+	#     
+	#     def dump_to_sdb(self, domain_name, item_name):
+	#         # import simplejson
+	#         # sdb = boto.connect_sdb()
+	#         # domain = sdb.lookup(domain_name)
+	#         # if not domain:
+	#         #     domain = sdb.create_domain(domain_name)
+	#         # item = domain.new_item(item_name)
+	#         # item.active = False
+	#         # for section in self.sections():
+	#         #     d = {}
+	#         #     for option in self.options(section):
+	#         #         d[option] = self.get(section, option)
+	#         #     item[section] = simplejson.dumps(d)
+	#         # item.save()
+	# 
+	#     def load_from_sdb(self, domain_name, item_name):
+	#         # import simplejson
+	#         # sdb = boto.connect_sdb()
+	#         # domain = sdb.lookup(domain_name)
+	#         # item = domain.get_item(item_name)
+	#         # for section in item.keys():
+	#         #     if not self.has_section(section):
+	#         #         self.add_section(section)
+	#         #     d = simplejson.loads(item[section])
+	#         #     for attr_name in d.keys():
+	#         #         attr_value = d[attr_name]
+	#         #         if attr_value == None:
+	#         #             attr_value = 'None'
+	#         #         if isinstance(attr_value, bool):
+	#         #             self.setbool(section, attr_name, attr_value)
+	#         #         else:
+	#         #             self.set(section, attr_name, attr_value)
