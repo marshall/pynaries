@@ -7,8 +7,8 @@ import os, sys, shutil
 import paramiko, tempfile
 import bundle, console
 
-import simplejson, httplib, hashlib, urllib2, tarfile
-import s3, StringIO
+import simplejson, httplib, hashlib, urllib2, tarfile, StringIO
+import boto.s3, logging
 
 def copyResolution(path, resolution, repository):
 	tarball = os.path.join(path, resolution.bundle.archiveName())
@@ -228,30 +228,30 @@ class S3Site(HTTPSite):
 		self.privateKey = privateKey
 		self.jsonIndex = JSONIndex()
 		self.baseURL = 'http://s3.amazonaws.com/%s' % bucketName
-		self.service = s3.Service(self.publicKey, self.privateKey, progress_listener=bundle.Progress)
+		self.connection = boto.s3.Connection(self.publicKey, self.privateKey)
+		#self.service = s3.Service(self.publicKey, self.privateKey, progress_listener=bundle.Progress)
 		self.bucketName = bucketName
-		self.bucket = self.service.get(bucketName)
-		try:
-			pynariesJson = self.bucket.get("pynaries.json")
-			if pynariesJson is not None:
-				self.jsonIndex.loadstring(pynariesJson.data)
-		except s3.S3Error, e:
-			pass
+		self.bucket = self.connection.get_bucket(bucketName)
+		#self.bucket = self.service.get(bucketName)
+		pynariesJson = self.bucket.get_key("pynaries.json")
+		if pynariesJson is not None:
+			self.jsonIndex.loadstring(pynariesJson.get_contents_as_string())
 		
 	def publish(self, b):
 		if isinstance(b, list):
 			for b1 in b: self.publish(b1)
 			return
 		
-		f = open(b.localArchive(), 'rb')
-		obj = s3.S3Object('/'.join([b.id, str(b.version), b.archiveName()]), f, {}, bucket=self.bucket)
-		self.bucket.save(obj, {'x-amz-acl': 'public-read'})
+		key = self.bucket.new_key('/'.join([b.id, str(b.version), b.archiveName()]))
+		size = os.stat(b.localArchive())[6]
+		bundle.Progress.start(b.archiveName(), "upload", size)
+		key.set_contents_from_file(open(b.localArchive(), 'rb'), cb=sftpCallback, num_cb=100, policy='public-read')
+		bundle.Progress.finish()
+		logging.info("Publishing pynaries JSON index...")
 		self.jsonIndex.add(b)
-		f.close()
+		logging.debug('Creating pynaries.json')
+		key = self.bucket.new_key('pynaries.json')
 		json = str(self.jsonIndex)
-		jsonObj = s3.S3Object('pynaries.json', json, {}, bucket=self.bucket)
-		try:
-			self.bucket.save(jsonObj, {'x-amz-acl': 'public-read'})
-		except S3Error, e:
-			if not 'RequestTimeout' in str(e):
-				raise e
+		logging.debug('set_contents_from_string')
+		key.set_contents_from_string(json, policy='public-read')
+		logging.info("Finished publishing")
