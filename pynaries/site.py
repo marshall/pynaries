@@ -3,8 +3,14 @@
 # see LICENSE in the root folder for details on the license.
 # Copyright (c) 2009 Appcelerator, Inc. All Rights Reserved.
 
-import os, sys, shutil
-import paramiko, tempfile
+import os, sys, shutil, tempfile
+
+sftpEnabled = True
+try:
+	import paramiko
+except ImportError, e:
+	sftpEnabled = False
+
 import bundle, console
 
 import simplejson, httplib, hashlib, urllib2, tarfile, StringIO
@@ -102,66 +108,67 @@ def sftpCallback(progress,size):
 		bundle.Progress.setMaxVal(size)
 	
 	bundle.Progress.set(progress)
-	
-class SFTPSite:
-	def __init__(self, host, user, port=22, path="/", password=None, identity=None, passphrase=None):
-		self.host = host
-		self.user = user
-		self.port = port
-		self.path = path
-		self.password = password
-		self.identity = identity
-		self.passphrase = passphrase
-		self.sftp = None
-		self.client = None
-		self.initClient()
-	
-	def initClient(self):
-		if self.sftp is None or self.client is None or not self.client.get_transport().is_active():
-			self.client = paramiko.SSHClient()
+
+if sftpEnabled:
+	class SFTPSite:
+		def __init__(self, host, user, port=22, path="/", password=None, identity=None, passphrase=None):
+			self.host = host
+			self.user = user
+			self.port = port
+			self.path = path
+			self.password = password
+			self.identity = identity
+			self.passphrase = passphrase
+			self.sftp = None
+			self.client = None
+			self.initClient()
 		
-			pkey = None
-			if self.identity is not None:
-				pkey = paramiko.RSAKey.from_private_key_file(self.identity, self.passphrase)
+		def initClient(self):
+			if self.sftp is None or self.client is None or not self.client.get_transport().is_active():
+				self.client = paramiko.SSHClient()
+			
+				pkey = None
+				if self.identity is not None:
+					pkey = paramiko.RSAKey.from_private_key_file(self.identity, self.passphrase)
+			
+				client.connect(self.host, self.port, self.user, self.password, pkey)
+				self.sftp = client.open_sftp()
 		
-			client.connect(self.host, self.port, self.user, self.password, pkey)
-			self.sftp = client.open_sftp()
-	
-	def publish(self, b):
-		self.initClient()
-		publishPath = "/".join([self.path, b.id, str(b.version), b.archiveName()])
-		size = os.stat(publishPath)[6]
-		bundle.Progress.start(bundle.archiveName(), "upload", size)
-		self.sftp.put(b.localArchive(), publishPath, sftpCallback)
-		bundle.Progress.finish()
+		def publish(self, b):
+			self.initClient()
+			publishPath = "/".join([self.path, b.id, str(b.version), b.archiveName()])
+			size = os.stat(publishPath)[6]
+			bundle.Progress.start(bundle.archiveName(), "upload", size)
+			self.sftp.put(b.localArchive(), publishPath, sftpCallback)
+			bundle.Progress.finish()
+			
+		def resolve(self, resolver):
+			self.initClient()
+			basepath = "/".join(self.path, resolver.id)
+			try:
+				self.sftp.chdir(basepath)
+			except IOError, e:
+				return None
+			
+			versions = self.sftp.listdir()
+			resolutions = []
+			for version in versions:
+				if resolver.matchesVersion(version):
+					path = '/'.join(basepath,version)
+					url = 'sftp://%s@%s%s' % (self.user, self.host, path)
+					resolutions.append(bundle.Resolution(
+						resolver.id, version, self,
+						path=path,
+						url=url))
+			return resolutions
 		
-	def resolve(self, resolver):
-		self.initClient()
-		basepath = "/".join(self.path, resolver.id)
-		try:
-			self.sftp.chdir(basepath)
-		except IOError, e:
-			return None
-		
-		versions = self.sftp.listdir()
-		resolutions = []
-		for version in versions:
-			if resolver.matchesVersion(version):
-				path = '/'.join(basepath,version)
-				url = 'sftp://%s@%s%s' % (self.user, self.host, path)
-				resolutions.append(bundle.Resolution(
-					resolver.id, version, self,
-					path=path,
-					url=url))
-		return resolutions
-	
-	def fetch(self, resolution, repository):
-		self.initClient()
-		tmpDir = tempfile.mkdtemp()
-		tmpArchive = os.path.join(tmpDir, resolution.bundle.archiveName())
-		bundle.Progress.start(resolution.bundle.archiveName(), 'download', 0)
-		self.sftp.get(resolution.arg('path'), tmpArchive, sftpCallback)
-		copyResolution(tmpDir, resolution, repository)
+		def fetch(self, resolution, repository):
+			self.initClient()
+			tmpDir = tempfile.mkdtemp()
+			tmpArchive = os.path.join(tmpDir, resolution.bundle.archiveName())
+			bundle.Progress.start(resolution.bundle.archiveName(), 'download', 0)
+			self.sftp.get(resolution.arg('path'), tmpArchive, sftpCallback)
+			copyResolution(tmpDir, resolution, repository)
 
 class HTTPSite:
 	def __init__(self, host, port=80, path='/'):

@@ -22,15 +22,18 @@ class LocalRepository:
 	def __init__(self):
 		self.path = os.path.join(os.path.expanduser("~"), '.pynaries')
 		if not os.path.exists(self.path):
-			os.mkdir(self.path)
+			try:
+				os.mkdir(self.path)
+			except: pass
 	
 		self._loadBundles()
 	
 	def _loadBundles(self):
 		self.bundles = {}
-		for dir in os.listdir(self.path):
-			if os.path.isdir(dir):
-				self._loadVersions(dir, os.path.join(self.path, dir))
+		if os.path.exists(self.path):
+			for dir in os.listdir(self.path):
+				if os.path.isdir(dir):
+					self._loadVersions(dir, os.path.join(self.path, dir))
 	
 	def _loadVersions(self, id, dir):
 		self.bundles[id] = {}

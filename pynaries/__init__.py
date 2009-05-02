@@ -8,7 +8,7 @@ import simplejson, simplejson.scanner
 import bundle, version
 from bundle import Bundle, Resolver, AddPullSite, localRepository
 from version import Version
-from site import LocalSite, SFTPSite, HTTPSite, S3Site
+from site import *
 
 logging.config.fileConfig(os.path.join(os.path.abspath(os.path.dirname(__file__)), 'logging.conf'))
 logger = logging.getLogger('Logger')
