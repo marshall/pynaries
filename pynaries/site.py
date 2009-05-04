@@ -13,24 +13,17 @@ except ImportError, e:
 
 import bundle, console
 
-import simplejson, httplib, hashlib, urllib2, tarfile, StringIO
+import simplejson, httplib, hashlib, urllib2, StringIO
 import boto.s3, logging
 
 def copyResolution(path, resolution, repository):
-	tarball = os.path.join(path, resolution.bundle.archiveName())
-	#tar = tarfile.open(tarball, "r:bz2")
-	#names = tar.getnames()
-	#bundle.Progress.start(resolution.bundle.archiveName(), 'extract', len(names))
+	bundleArchive = os.path.join(path, resolution.bundle.archiveName())
 	path = os.path.join(repository.path, resolution.id, str(resolution.version))
 	try: os.makedirs(path)
 	except: pass
 	archivePath = os.path.join(path, resolution.bundle.archiveName())
-	shutil.copy(tarball, archivePath)
-	#for name in names:
-	#	tar.extract(name, path)
-	#	bundle.Progress.update(1)
-	#tar.close()
-	#bundle.Progress.finish()
+	shutil.copy(bundleArchive, archivePath)
+
 class JSONIndex:
 	def __init__(self):
 		self.json = {
@@ -60,7 +53,12 @@ class JSONIndex:
 	def add(self, bundle):
 		if not self.json['bundles'].has_key(bundle.id):
 			self.json['bundles'][bundle.id] = {}
-		self.json['bundles'][bundle.id][str(bundle.version)] = bundle.sha1
+		self.json['bundles'][bundle.id][str(bundle.version)] = {
+			'sha1': bundle.sha1,
+			'type': bundle.type,
+			'id': bundle.id,
+			'version': str(bundle.version)
+		}
 		
 class LocalSite:
 	def __init__(self, path):
@@ -199,9 +197,10 @@ class HTTPSite:
 		for b in self.jsonIndex.json['bundles'].keys():
 			versions = self.jsonIndex.json['bundles'][b]
 			for version in versions.keys():
+				type = self.jsonIndex.json['bundles'][b][version]['type']
 				if resolver.id == b and resolver.matchesVersion(version):
 					url = self.baseURL + '/' + resolver.id + '/' + \
-						version + '/' + bundle.Bundle.getArchiveName(resolver.id, version)
+						version + '/' + bundle.Bundle.getArchiveName(resolver.id, version, type)
 					resolutions.append(bundle.Resolution(
 						resolver.id, version, self,
 						url=url))

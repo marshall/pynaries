@@ -16,7 +16,7 @@ InRange = ".."
 Progress = console.ConsoleProgress()
 
 import shutil, platform, tarfile, time, hashlib
-import httplib, site
+import httplib, site, zipfile
 
 class LocalRepository:
 	def __init__(self):
@@ -59,17 +59,43 @@ class LocalRepository:
 localRepository = LocalRepository()
 
 class Bundle:
-	def __init__(self, id, version, repository=localRepository):
+	TarBZ2 = ".tar.bz2"
+	Zip = ".zip"
+	TarGZ = ".tar.gz"
+	
+	def __init__(self, id, version, repository=localRepository, type=TarBZ2):
 		self.id = id
+		self.type = type
 		self.version = Version.fromObject(version)
 		self.repository = repository
+
+	@staticmethod
+	def createFromArchive(path, id, version):
+		filename = os.path.split(path)[-1]
+		pynariesDir = os.path.join(os.path.expanduser('~'), '.pynaries', id, version)
+		match = re.search('(\.(tar\.bz2|tar\.gz|zip))', filename)
+		if match is None:
+			raise Exception("Error: Couldn't determine archive type of " + filename)
+
+		type = match.group(1)
+		if not (type == Bundle.TarBZ2 or type == Bundle.TarGZ or type == Bundle.Zip):
+			raise Exception("Error: Unsupported archive type: " + type)
+	
+		if not os.path.exists(pynariesDir):
+			os.makedirs(pynariesDir)
+		shutil.copy(path,
+			os.path.join(pynariesDir,Bundle.getArchiveName(id,version,type)))
+
+		bundle = Bundle(id, version, type=type)
+		bundle.sha1 = bundle.archiveSHA1()
+		return bundle
 	
 	@staticmethod
-	def getArchiveName(id, version):
-		return id + "_" + str(version) + ".tar.bz2"
+	def getArchiveName(id, version, type):
+		return id + "_" + str(version) + type
 		
 	def archiveName(self):
-		return Bundle.getArchiveName(self.id, self.version)
+		return Bundle.getArchiveName(self.id, self.version, self.type)
 		
 	def localPath(self):
 		return os.path.join(self.repository.path, self.id, str(self.version));
@@ -99,9 +125,16 @@ class Bundle:
 	def bundle(self, dir):
 		try: os.makedirs(self.localPath())
 		except: pass
-		bundleArchive = self.localArchive()
-		bundleFile = tarfile.open(bundleArchive, "w:bz2")
-		walked = os.walk(dir)
+		if self.type is TarBZ2:
+			self._bundleTarball(dir, "bz2")
+		elif self.type is TarGZ:
+			self._bundleTarball(dir, "gz")
+		else:
+			self._bundleZip(dir)
+		self.sha1 = self.archiveSHA1()
+		return self.localArchive()
+	
+	def _startBundleProgress(self, dir):
 		size = 0
 		for root, dirs, files in os.walk(dir):
 			size += len(files)
@@ -110,32 +143,67 @@ class Bundle:
 		
 		#print "Bundling %s (%d files)" % (self.archiveName(), size)
 		Progress.start(self.archiveName(), "compress", size)
+	
+	def _walkBundleFiles(self, dir, fn):
 		cwd = os.getcwd()
 		os.chdir(dir)
 		for root, dirs, files in os.walk("."):
 			for file in files:
 				filepath = os.path.join(root, file)
-				bundleFile.add(filepath)
+				fn(filepath, file)
 				Progress.update(1)
-		
 		os.chdir(cwd)
-		Progress.finish()
+	
+	def _bundleTarball(self, dir, mode):
+		bundleArchive = self.localArchive()
+		bundleFile = tarfile.open(bundleArchive, "w:"+mode)
+		self._startBundleProgress()
+
+		def tarFile(filePath, file):
+			bundleFile.add(filepath)
 		
+		self._walkBundleFiles(dir, tarFile)
+		
+		Progress.finish()
 		bundleFile.close()
-		self.sha1 = self.archiveSHA1()
-		return bundleArchive
+	
+	def _bundleZip(self, dir):
+		bundleArchive = self.localArchive()
+		bundleFile = zipfile.ZipFile(bundleArchive, 'w')
+		self._startBundleProgress()
+		
+		def zipFile(filePath):
+			bundleFile.write(filePath)
+		
+		self._walkBundleFiles(dir, zipFile)
+		
+		Progress.finish()
+		bundleFile.close()
 	
 	def extract(self, dest):
-		tarball = os.path.join(self.localArchive())
-		tar = tarfile.open(tarball, "r:bz2")
-		names = tar.getnames()
+		if self.type is TarBZ2:
+			self._extractTarball(dest, "bz2")
+		elif self.type is TarGZ:
+			self._extractTarball(dest, "gz")
+		else:
+			self._extractZip(dest)
+
+	def _extractArchive(self, dest, archive, names):
 		Progress.start(self.archiveName(), 'extract', len(names))
 		for name in names:
-			tar.extract(name, dest)
+			archive.extract(name, dest)
 			Progress.update(1)
-		tar.close()
+		archive.close()
 		Progress.finish()
+	
+	def _extractTarball(self, dest, mode):
+		tar = tarfile.open(self.localArchive(), "r:"+mode)
+		self._extractArchive(dest, tar, tar.getnames())
 		
+	def _extractZip(self, dest):
+		zip = zipfile.ZipFile(self.localArchive(), 'r')
+		self._extractArchive(dest, zip, zip.namelist())
+	
 	def publish(self, site):
 		if not os.path.exists(self.localArchive()):
 			raise Exception(self.localArchive() + " doesn't exist")
@@ -155,18 +223,23 @@ class Resolution:
 		self.id = id
 		self.version = Version.fromObject(version)
 		self.site = site
-		self.bundle = Bundle(id, version)
-		self.args = {}
 		self.local = local
+		self.bundle = Bundle(id, version, self.type())
+		self.args = {}
 		for key in kwargs.keys():
 			self.args[key] = kwargs[key]
 	
+	def remoteDict(self):
+		if self.local: return None
+		return self.site.getIndex().json['bundles'][self.id][str(self.version)]
+	
 	def sha1(self):
-		if self.local:
-			return self.bundle.archiveSHA1()
-		else:
-			idx = self.site.getIndex()
-			return idx.json['bundles'][self.id][str(self.version)]
+		if self.local: return self.bundle.archiveSHA1()
+		else: return self.remoteDict()['sha1']
+	
+	def type(self):
+		if self.local: return self.bundle.type
+		else: return self.remoteDict()['type']
 	
 	def arg(self, key):
 		return self.args[key]
