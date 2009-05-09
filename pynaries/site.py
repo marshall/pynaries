@@ -80,7 +80,7 @@ class LocalSite:
 		shutil.copy(bundle.localArchive(), dir)
 		self.jsonIndex.add(bundle)
 		self.jsonIndex.save(os.path.join(self.path, "pynaries.json"))
-		
+
 	def resolve(self, resolver):
 		basepath = os.path.join(self.path, resolver.id)
 		resolutions = []
@@ -91,10 +91,9 @@ class LocalSite:
 					url = "file://" + path
 					url = url.replace('\\', '/')
 					url = urllib.quote_plus(url)
-					resolutions.append(bundle.Resolution(
-						resolver.id, dir, self,
-						path=path,
-						url=url))
+					type = self.getIndex().json['bundles'][reolver.id][dir]['type']
+					bdl = bundle.Bundle(resolver.id, dir, type)
+					resolutions.append(bundle.Resolution(bdl, self, url=url))
 		
 		return resolutions
 	
@@ -154,10 +153,9 @@ if sftpEnabled:
 				if resolver.matchesVersion(version):
 					path = '/'.join(basepath,version)
 					url = 'sftp://%s@%s%s' % (self.user, self.host, path)
-					resolutions.append(bundle.Resolution(
-						resolver.id, version, self,
-						path=path,
-						url=url))
+					type = self.getIndex().json['bundles'][resolver.id][version]['type']
+					bdl = bundle.Bundle(resolver.id, version, type)
+					resolutions.append(bundle.Resolution(bdl, self, url=url))
 			return resolutions
 		
 		def fetch(self, resolution, repository):
@@ -201,9 +199,8 @@ class HTTPSite:
 				if resolver.id == b and resolver.matchesVersion(version):
 					url = self.baseURL + '/' + resolver.id + '/' + \
 						version + '/' + bundle.Bundle.getArchiveName(resolver.id, version, type)
-					resolutions.append(bundle.Resolution(
-						resolver.id, version, self,
-						url=url))
+					bdl = bundle.Bundle(resolver.id, version, type)
+					resolutions.append(bundle.Resolution(bdl, self, url=url))
 		return resolutions
 
 	def fetch(self, resolution, repository):

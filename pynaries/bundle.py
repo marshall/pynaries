@@ -27,7 +27,7 @@ class LocalRepository:
 			except: pass
 	
 		self._loadBundles()
-	
+
 	def _loadBundles(self):
 		self.bundles = {}
 		if os.path.exists(self.path):
@@ -39,20 +39,23 @@ class LocalRepository:
 		self.bundles[id] = {}
 		for vdir in os.listdir(dir):
 			if os.path.isdir(vdir):
-				self.bundles[id][vdir] = Bundle(id, vdir, self)
+					bundle = Bundle.localBundle(id, vdir, dir)
+					if bundle: self.bundles[id][vdir] = bundle
 
 	def bundles(self):
 		for id in self.bundles.keys():
 			for version in self.bundles[id].keys():
 				yield self.bundles[id][version]
-	
+
 	def resolve(self, resolver):
 		basepath = os.path.join(self.path, resolver.id)
 		resolutions = []
 		if os.path.exists(basepath):
 			for dir in os.listdir(basepath):
-				if os.path.isdir(os.path.join(basepath,dir)) and resolver.matchesVersion(dir):
-					resolutions.append(Resolution(resolver.id, dir, None, path=os.path.join(basepath, dir), local=True))
+				dirPath = os.path.join(basepath, dir)
+				if os.path.isdir(dirPath) and resolver.matchesVersion(dir):
+					bundle = Bundle.localBundle(resolver.id, dir, dirPath)
+					if bundle: resolutions.append(Resolution(bundle, None))
 		
 		return resolutions
 
@@ -63,11 +66,29 @@ class Bundle:
 	Zip = ".zip"
 	TarGZ = ".tar.gz"
 	
-	def __init__(self, id, version, repository=localRepository, type=TarBZ2):
+	def __init__(self, id, version, type=TarBZ2, repository=localRepository):
 		self.id = id
 		self.type = type
 		self.version = Version.fromObject(version)
 		self.repository = repository
+
+	@staticmethod
+	def localBundle(id, version, dir):
+		for file in os.listdir(dir):
+			fullPath = os.path.join(dir, file)
+			print fullPath
+			b = None
+			if fullPath.endswith(Bundle.TarGZ):
+				b = Bundle(id, version, Bundle.TarGZ)
+				b.path = fullPath
+			elif fullPath.endswith(Bundle.TarBZ2):
+				b = Bundle(id, version, Bundle.TarBZ2)
+				b.path = fullPath
+			elif fullPath.endswith(Bundle.Zip):
+				b = Bundle(id, version, Bundle.Zip)
+				b.path = fullPath
+		print b
+		return b
 
 	@staticmethod
 	def createFromArchive(path, id, version):
@@ -93,7 +114,7 @@ class Bundle:
 	@staticmethod
 	def getArchiveName(id, version, type):
 		return id + "_" + str(version) + type
-		
+
 	def archiveName(self):
 		return Bundle.getArchiveName(self.id, self.version, self.type)
 		
@@ -101,7 +122,7 @@ class Bundle:
 		return os.path.join(self.repository.path, self.id, str(self.version));
 	
 	def localArchive(self):
-		return self.path(self.archiveName())
+		return os.path.join(self.localPath(), self.archiveName())
 
 	def archiveSHA1(self):
 		if not os.path.exists(self.localArchive()):
@@ -181,9 +202,9 @@ class Bundle:
 		bundleFile.close()
 	
 	def extract(self, dest):
-		if self.type is TarBZ2:
+		if self.type is Bundle.TarBZ2:
 			self._extractTarball(dest, "bz2")
-		elif self.type is TarGZ:
+		elif self.type is Bundle.TarGZ:
 			self._extractTarball(dest, "gz")
 		else:
 			self._extractZip(dest)
@@ -211,7 +232,7 @@ class Bundle:
 		site.publish(self)
 	
 	def path(self, *args):
-		return os.path.join(self.localPath(), *args)		 
+		return os.path.join(self.localPath(), *args)
 
 PullSites = [ ]
 
@@ -219,27 +240,31 @@ def AddPullSite(site):
 	PullSites.append(site)
 	
 class Resolution:
-	def __init__(self, id, version, site, local=False, **kwargs):
-		self.id = id
-		self.version = Version.fromObject(version)
+	def __init__(self, bundle, site, **kwargs):
+		self.bundle = bundle
+		self.id = bundle.id
+		self.version = bundle.version
 		self.site = site
-		self.local = local
-		self.bundle = Bundle(id, version, self.type())
 		self.args = {}
 		for key in kwargs.keys():
 			self.args[key] = kwargs[key]
 	
 	def remoteDict(self):
-		if self.local: return None
+		if not self.site:
+			return None
 		return self.site.getIndex().json['bundles'][self.id][str(self.version)]
 	
 	def sha1(self):
-		if self.local: return self.bundle.archiveSHA1()
-		else: return self.remoteDict()['sha1']
+		if not self.site:
+			return self.bundle.archiveSHA1()
+		else:
+			return self.remoteDict()['sha1']
 	
 	def type(self):
-		if self.local: return self.bundle.type
-		else: return self.remoteDict()['type']
+		if not self.site:
+			return self.bundle.type
+		else:
+			return self.remoteDict()['type']
 	
 	def arg(self, key):
 		return self.args[key]
@@ -317,10 +342,10 @@ class Resolver:
 			if self.resolution is None:
 				return
 		
-		if not self.resolution.local:
+		if self.resolution.site:
 			self.resolution.site.fetch(self.resolution, repository)
 		else:
-			logging.info(":: => Using local resolution: " + self.resolution.arg('path'))
-		
+			logging.info(":: => Using local resolution: " + self.resolution.bundle.path)
+
 		return self.resolution.bundle
 	
