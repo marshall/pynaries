@@ -66,9 +66,11 @@ class Bundle:
 	Zip = ".zip"
 	TarGZ = ".tar.gz"
 	
-	def __init__(self, id, version, type=TarBZ2, repository=localRepository):
+	# Zip is the default bundle type, because zip extract much
+	# more quickly than tar bz2 and have much richer cross-platform support
+	def __init__(self, id, version, type=Zip, repository=localRepository):
 		self.id = id
-		self.type = type
+		self.type = str(type) # lose the unicode
 		self.version = Version.fromObject(version)
 		self.repository = repository
 
@@ -76,7 +78,6 @@ class Bundle:
 	def localBundle(id, version, dir):
 		for file in os.listdir(dir):
 			fullPath = os.path.join(dir, file)
-			print fullPath
 			b = None
 			if fullPath.endswith(Bundle.TarGZ):
 				b = Bundle(id, version, Bundle.TarGZ)
@@ -87,7 +88,6 @@ class Bundle:
 			elif fullPath.endswith(Bundle.Zip):
 				b = Bundle(id, version, Bundle.Zip)
 				b.path = fullPath
-		print b
 		return b
 
 	@staticmethod
@@ -146,9 +146,9 @@ class Bundle:
 	def bundle(self, dir):
 		try: os.makedirs(self.localPath())
 		except: pass
-		if self.type is TarBZ2:
+		if self.type is Bundle.TarBZ2:
 			self._bundleTarball(dir, "bz2")
-		elif self.type is TarGZ:
+		elif self.type is Bundle.TarGZ:
 			self._bundleTarball(dir, "gz")
 		else:
 			self._bundleZip(dir)
@@ -158,11 +158,11 @@ class Bundle:
 	def _startBundleProgress(self, dir):
 		size = 0
 		for root, dirs, files in os.walk(dir):
-			size += len(files)
+			size += len(files) + len(dirs)
 		if size is 0:
 			raise Exception("No files to bundle in " + dir)
 		
-		#print "Bundling %s (%d files)" % (self.archiveName(), size)
+		print "Bundling %s (%d files)" % (self.archiveName(), size)
 		Progress.start(self.archiveName(), "compress", size)
 	
 	def _walkBundleFiles(self, dir, fn):
@@ -173,15 +173,21 @@ class Bundle:
 				filepath = os.path.join(root, file)
 				fn(filepath, file)
 				Progress.update(1)
+
+			# Add directories as well, as they may be symlinks
+			for dir in dirs:
+				filepath = os.path.join(root, dir)
+				fn(filepath, dir)
+				Progress.update(1)
 		os.chdir(cwd)
 	
 	def _bundleTarball(self, dir, mode):
 		bundleArchive = self.localArchive()
 		bundleFile = tarfile.open(bundleArchive, "w:"+mode)
-		self._startBundleProgress()
+		self._startBundleProgress(dir)
 
 		def tarFile(filePath, file):
-			bundleFile.add(filepath)
+			bundleFile.add(filePath)
 		
 		self._walkBundleFiles(dir, tarFile)
 		
@@ -191,10 +197,24 @@ class Bundle:
 	def _bundleZip(self, dir):
 		bundleArchive = self.localArchive()
 		bundleFile = zipfile.ZipFile(bundleArchive, 'w')
-		self._startBundleProgress()
-		
-		def zipFile(filePath):
-			bundleFile.write(filePath)
+		self._startBundleProgress(dir)
+
+		def zipFile(filePath, file):
+			arcname = filePath.replace(dir + os.sep, "")
+			if os.path.islink(filePath):
+				dest = os.readlink(filePath)
+				attr = zipfile.ZipInfo()
+				attr.filename = arcname
+				attr.create_system = 3
+				attr.external_attr = 2716663808L
+				attr.compress_type = zipfile.ZIP_DEFLATED
+				bundleFile.writestr(attr, dest)
+			elif os.path.isdir(filePath):
+				attr = zipfile.ZipInfo(arcname + '/')
+				attr.external_attr = 0755 << 16L
+				bundleFile.writestr(attr, '')
+			else:
+				bundleFile.write(filePath, arcname, zipfile.ZIP_DEFLATED)
 		
 		self._walkBundleFiles(dir, zipFile)
 		
@@ -209,22 +229,38 @@ class Bundle:
 		else:
 			self._extractZip(dest)
 
-	def _extractArchive(self, dest, archive, names):
+	def _extractArchive(self, dest, archive, names, extract_cb):
 		Progress.start(self.archiveName(), 'extract', len(names))
 		for name in names:
-			archive.extract(name, dest)
+			extract_cb(name, dest)
 			Progress.update(1)
 		archive.close()
 		Progress.finish()
 	
 	def _extractTarball(self, dest, mode):
 		tar = tarfile.open(self.localArchive(), "r:"+mode)
-		self._extractArchive(dest, tar, tar.getnames())
+		def extract_cb(name, dest):
+			tar.extract(name, dest)
+		self._extractArchive(dest, tar, tar.getnames(), extract_cb)
 		
 	def _extractZip(self, dest):
 		zip = zipfile.ZipFile(self.localArchive(), 'r')
-		self._extractArchive(dest, zip, zip.namelist())
-	
+		def extract_cb(name, dest):
+			dest = os.path.join(dest, name)
+			info = zip.getinfo(name)
+			if info.external_attr == 2716663808L:
+				target = zip.read(name)
+				os.symlink(target, dest)
+			elif name.endswith("/"):
+				os.makedirs(dest)
+				os.chmod(dest, info.external_attr >> 16L)
+			else:
+				bytes = zip.read(name)
+				f = open(dest, 'w')
+				f.write(bytes)
+				os.chmod(dest, info.external_attr >> 16L)
+		self._extractArchive(dest, zip, zip.namelist(), extract_cb)
+
 	def publish(self, site):
 		if not os.path.exists(self.localArchive()):
 			raise Exception(self.localArchive() + " doesn't exist")
